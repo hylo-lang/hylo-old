@@ -1,4 +1,4 @@
-# Outdated of Hylo
+# Outdated Implementation of Hylo
 
 The current implementation is in https://github.com/hylo-lang/hylo-new (or, if we've moved it, in https://github.com/hylo-lang/hylo).
 
