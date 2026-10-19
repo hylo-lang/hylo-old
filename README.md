@@ -1,4 +1,6 @@
-# Hylo (formerly Val)
+# Outdated of Hylo
+
+The current implementation is in https://github.com/hylo-lang/hylo-new (or, if we've moved it, in https://github.com/hylo-lang/hylo).
 
 [![codecov](https://codecov.io/gh/hylo-lang/hylo/graph/badge.svg?token=YF1Q8W88VN)](https://codecov.io/gh/hylo-lang/hylo)
 
