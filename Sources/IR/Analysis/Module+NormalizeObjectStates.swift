@@ -16,7 +16,32 @@ extension Module {
 
     // Verify that object states are properly initialized/deinitialized in `b` given `context`,
     // updating `self` as necessary and reporting violations in `diagnostics`.
-    machine.fixedPoint { (b, context) in
+    machine.fixedPoint(reconciling: { source, target, context, meet in
+      let terminator = self[f].terminator(of: source)!
+      var branch = self[f][terminator] as! Terminator
+      var changed = false
+      var edge = source
+      var insertion = terminator
+      for (location, object) in context.memory {
+        guard case .root(let root) = location, let merged = meet.memory[location] else { continue }
+        let paths = (object.value - merged.value).filter { !object.layout[$0].type.isBuiltin }
+        if paths.isEmpty { continue }
+
+        if edge == source && branch.successors.count > 1 {
+          edge = self[f].appendBlock(in: self[f][source].scope)
+          for successor in branch.successors where successor == target {
+            branch.replaceSuccessor(successor, with: edge)
+          }
+          self[f].replace(terminator, with: branch)
+          insertion = self[f].insert(self.makeBranch(to: target, at: branch.site), at: .end(of: edge))
+        }
+        insertDeinit(
+          root, at: paths, before: insertion, in: f, anchoringInstructionsTo: branch.site,
+          reportingDiagnosticsTo: &diagnostics, recoveringOnFailure: true)
+        changed = true
+      }
+      return changed ? edge : nil
+    }, updatingControlFlow: { $0.recomputeControlFlow(self) }) { (b, context) in
       var pc = self[f].firstInstruction(in: b)?.address
       while let a = pc {
         let user = InstructionID(a)
@@ -736,16 +761,22 @@ extension Module {
     _ root: Operand, at initializedSubfields: [RecordPath], before i: InstructionID,
     in f: Function.ID,
     anchoringInstructionsTo site: SourceRange,
-    reportingDiagnosticsTo log: inout DiagnosticSet
+    reportingDiagnosticsTo log: inout DiagnosticSet, recoveringOnFailure: Bool = false
   ) {
     for path in initializedSubfields {
-      Emitter.withInstance(insertingIn: &self, reportingDiagnosticsTo: &log) { (e) in
+      var errors = DiagnosticSet()
+      let storage = Emitter.withInstance(insertingIn: &self, reportingDiagnosticsTo: &errors) { e in
         e.insertionFunction = f
         e.insertionPoint = .before(i)
-        e.lowering(at: site) { e in
-          let s = e._subfield_view(root, at: path)
-          e._emitDeinit(s)
+        return e.lowering(at: site) { e in
+          let storage = e._subfield_view(root, at: path)
+          e._emitDeinit(storage)
+          return storage
         }
+      }
+      log.formUnion(errors)
+      if recoveringOnFailure && errors.containsError {
+        self[f].insert(makeMarkState(storage, initialized: false, in: f, at: site), at: .before(i))
       }
     }
   }

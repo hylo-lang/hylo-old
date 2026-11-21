@@ -1,0 +1,16 @@
+//- lowerToFinishedIR expecting: .failure
+
+type Computer {
+  var serial: Int
+  public memberwise init
+  public fun shutdown() sink -> Int { self.serial }
+}
+
+fun run(_ flag: Bool) {
+  var computer = Computer(serial: 1)
+  if flag { //! diagnostic type 'Computer' does not conform to trait 'Deinitializable'
+    _ = computer.shutdown()
+  }
+}
+
+public fun main() { run(false) }

@@ -72,7 +72,14 @@ struct AbstractInterpreter<Domain: AbstractDomain>: Sendable {
   }
 
   /// Runs this instance using `interpret` to interpret basic blocks.
-  mutating func fixedPoint(_ interpret: Interpret) {
+  ///
+  /// Once all inputs to a join are known, `reconcile` may insert instructions on an incoming
+  /// edge. It returns the block containing the new instructions, or nil for an unchanged edge.
+  mutating func fixedPoint(
+    reconciling reconcile: (Block.ID, Block.ID, Context, Context) -> Block.ID? = { _, _, _, _ in nil },
+    updatingControlFlow update: (inout Self) -> Void = { _ in },
+    _ interpret: Interpret
+  ) {
     // Process the entry.
     let entry = dominatorTree.root
     state[entry]!.after = afterContext(
@@ -87,6 +94,25 @@ struct AbstractInterpreter<Domain: AbstractDomain>: Sendable {
       }
 
       let (sources, before) = beforeContext(of: blockToProcess)
+      if sources.count > 1 && sources.count == cfg.predecessors(of: blockToProcess).count {
+        var changedEdge = false
+        for source in sources {
+          if let edge = reconcile(source, blockToProcess, state[source]!.after, before) {
+            if edge == source {
+              state[source]!.after = afterContext(
+                of: source, in: state[source]!.before, processingBlockWith: interpret)
+            } else {
+              update(&self)
+              addWork(edge)
+            }
+            changedEdge = true
+          }
+        }
+        if changedEdge {
+          addWork(blockToProcess)
+          continue
+        }
+      }
       let after: Context
       let changed: Bool
 

@@ -1,0 +1,41 @@
+//- compileAndRun expecting: .success
+
+let global = PointerToMutable<Int>.allocate(count: 1)
+
+type A : Regular {
+  public memberwise init
+  public fun deinit() sink {
+    var x = global.copy()
+    &x.unsafe[] += 1
+  }
+}
+
+fun run(_ flag: Bool) {
+  var a = A()
+  if flag { a.deinit() }
+}
+
+fun read(_ a: A) {}
+
+fun loop() {
+  var a = A()
+  var iteration = 0
+  do {
+    read(a)
+    &iteration += 1
+    if iteration == 2 {
+      a.deinit()
+      break
+    }
+  } while iteration < 3
+}
+
+public fun main() {
+  global.unsafe_initialize_pointee(0)
+  run(false)
+  precondition(global.unsafe[] == 1)
+  run(true)
+  precondition(global.unsafe[] == 2)
+  loop()
+  precondition(global.unsafe[] == 3)
+}
